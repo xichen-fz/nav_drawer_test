@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Nav_Drawer_Test</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="nav_header_title">WeCare Project</string>
+    <string name="nav_header_subtitle">BLE Board Connection APP</string>
+    <string name="nav_header_desc">Navigation header</string>
+    <string name="action_settings">Settings</string>
+
+    <string name="menu_home">Home</string>
+    <string name="menu_data">Data</string>
+    <string name="menu_dev">Developer</string>
+
+    <string name="text_home">Home Fragment</string>
+    <string name="text_data">DataList Fragment</string>
+    <string name="text_dev">Developer Fragment</string>
+</resources>
