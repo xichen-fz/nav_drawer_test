@@ -62,7 +62,7 @@ class HomeFragment : Fragment() {
         val root: View = binding.root
 
         Timber.i("binding.root = $root")  // Change upon switching back
-        Timber.i("sharedViewModel = $sharedViewModel")    // Change upon switching back
+        Timber.i("sharedViewModel = $sharedViewModel")
 
         mainActivity.getNavBackStackEntryCount()
 

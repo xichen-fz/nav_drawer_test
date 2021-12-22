@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
@@ -17,7 +18,11 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Menu
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.EditText
+import android.widget.ScrollView
+import android.widget.TextView
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.navigation.NavigationView
 import androidx.navigation.findNavController
@@ -39,11 +44,14 @@ import com.example.nav_drawer_test.ui.SharedViewModel
 import com.example.nav_drawer_test.ui.home.HomeFragment
 import com.punchthrough.blestarterappandroid.ScanResultAdapter
 import com.punchthrough.blestarterappandroid.CharacteristicAdapter
-import com.punchthrough.blestarterappandroid.ble.ConnectionEventListener
-import com.punchthrough.blestarterappandroid.ble.ConnectionManager
+import com.punchthrough.blestarterappandroid.ble.*
 import kotlinx.android.synthetic.main.app_bar_main.view.*
+import kotlinx.android.synthetic.main.fragment_developer.*
 import kotlinx.android.synthetic.main.fragment_home.*
 import org.jetbrains.anko.alert
+import org.jetbrains.anko.noButton
+import org.jetbrains.anko.selector
+import org.jetbrains.anko.yesButton
 import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.*
@@ -61,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var appBarConfiguration: AppBarConfiguration
     private lateinit var binding: ActivityMainBinding
 
+    /**************** BLE Device Scan ****************/
     private val bluetoothAdapter: BluetoothAdapter by lazy {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
@@ -94,18 +103,50 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**************** BLE Device (Connected) Operations ****************/
     private val dateFormatter = SimpleDateFormat("MMM d, HH:mm:ss", Locale.US)
     private val characteristics by lazy {
         ConnectionManager.servicesOnDevice(gattDevice)?.flatMap { service ->
             service.characteristics ?: listOf()
         } ?: listOf()
     }
+    private val characteristicProperties by lazy {
+        characteristics.map { characteristic ->
+            characteristic to mutableListOf<CharacteristicProperty>().apply {
+                if (characteristic.isNotifiable()) add(CharacteristicProperty.Notifiable)
+                if (characteristic.isIndicatable()) add(CharacteristicProperty.Indicatable)
+                if (characteristic.isReadable()) add(CharacteristicProperty.Readable)
+                if (characteristic.isWritable()) add(CharacteristicProperty.Writable)
+                if (characteristic.isWritableWithoutResponse()) {
+                    add(CharacteristicProperty.WritableWithoutResponse)
+                }
+            }.toList()
+        }.toMap()
+    }
     private val characteristicAdapter: CharacteristicAdapter by lazy {
         CharacteristicAdapter(characteristics) { characteristic ->
-//            showCharacteristicOptions(characteristic) //TODO
+            showCharacteristicOptions(characteristic)
         }
     }
+    private var notifyingCharacteristics = mutableListOf<UUID>()
+    private enum class CharacteristicProperty {
+        Readable,
+        Writable,
+        WritableWithoutResponse,
+        Notifiable,
+        Indicatable;
 
+        val action
+            get() = when (this) {
+                Readable -> "Read"
+                Writable -> "Write"
+                WritableWithoutResponse -> "Write Without Response"
+                Notifiable -> "Toggle Notifications"
+                Indicatable -> "Toggle Indications"
+            }
+    }
+
+    /**************** Misc ****************/
     private val isLocationPermissionGranted
         get() = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
 
@@ -119,6 +160,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gattDevice: BluetoothDevice
     private lateinit var devMtuButton: Button
     private lateinit var devCharacteristicsRecyclerView: RecyclerView
+    private lateinit var devLogTextView: TextView
+    private lateinit var devLogScrollView: ScrollView
 
     /*******************************************
      * Activity function overrides
@@ -174,7 +217,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        ConnectionManager.registerListener(connectionEventListener)
+        // TODO: separate listener for Scan and Operation
+        if (!deviceConnected) {
+            ConnectionManager.registerListener(connectionEventListenerScan)
+        }
         if (!bluetoothAdapter.isEnabled) {
             promptEnableBluetooth()
         }
@@ -303,6 +349,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun logOperation(message: String) {
+        val formattedMessage = String.format("%s: %s", dateFormatter.format(Date()), message)
+        runOnUiThread {
+            val currentLogText = if (devLogTextView.text.isEmpty()) {
+                "Beginning of log."
+            } else {
+                devLogTextView.text
+            }
+            devLogTextView.text = "$currentLogText\n$formattedMessage"
+            devLogScrollView.post { devLogScrollView.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    private fun showCharacteristicOptions(characteristic: BluetoothGattCharacteristic) {
+        characteristicProperties[characteristic]?.let { properties ->
+            selector("Select an action to perform", properties.map { it.action }) { _, i ->
+                when (properties[i]) {
+                    CharacteristicProperty.Readable -> {
+                        logOperation("Reading from ${characteristic.uuid}")
+                        ConnectionManager.readCharacteristic(gattDevice, characteristic)
+                    }
+                    CharacteristicProperty.Writable, CharacteristicProperty.WritableWithoutResponse -> {
+                        showWritePayloadDialog(characteristic)
+                    }
+                    CharacteristicProperty.Notifiable, CharacteristicProperty.Indicatable -> {
+                        if (notifyingCharacteristics.contains(characteristic.uuid)) {
+                            logOperation("Disabling notifications on ${characteristic.uuid}")
+                            ConnectionManager.disableNotifications(gattDevice, characteristic)
+                        } else {
+                            logOperation("Enabling notifications on ${characteristic.uuid}")
+                            ConnectionManager.enableNotifications(gattDevice, characteristic)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showWritePayloadDialog(characteristic: BluetoothGattCharacteristic) {
+        val hexField = layoutInflater.inflate(R.layout.edittext_hex_payload, null) as EditText
+        alert {
+            customView = hexField
+            isCancelable = false
+            yesButton {
+                with(hexField.text.toString()) {
+                    if (isNotBlank() && isNotEmpty()) {
+                        val bytes = hexToBytes()
+                        logOperation("Writing to ${characteristic.uuid}: ${bytes.toHexString()}")
+                        ConnectionManager.writeCharacteristic(gattDevice, characteristic, bytes)
+                    } else {
+                        logOperation("Please enter a hex payload to write to ${characteristic.uuid}")
+                    }
+                }
+            }
+            noButton {}
+        }.show()
+        hexField.showKeyboard()
+    }
+
     /*******************************************
      * Callback bodies
      *******************************************/
@@ -327,7 +432,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val connectionEventListener by lazy {
+    private val connectionEventListenerScan by lazy {
         ConnectionEventListener().apply {
             onConnectionSetupComplete = { gatt ->
 //                Intent(this@MainActivity, BleOperationsActivity::class.java).also {
@@ -360,6 +465,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val connectionEventListenerDev by lazy {
+        ConnectionEventListener().apply {
+            onDisconnect = {
+                runOnUiThread {
+                    alert {
+                        title = "Disconnected"
+                        message = "Disconnected from device."
+                        positiveButton("OK") { } // TODO: onBackPressed()
+                    }.show()
+                }
+            }
+
+            onCharacteristicRead = { _, characteristic ->
+                logOperation("Read from ${characteristic.uuid}: ${characteristic.value.toHexString()}")
+            }
+
+            onCharacteristicWrite = { _, characteristic ->
+                logOperation("Wrote to ${characteristic.uuid}")
+            }
+
+            onMtuChanged = { _, mtu ->
+                logOperation("MTU updated to $mtu")
+            }
+
+            onCharacteristicChanged = { _, characteristic ->
+                logOperation("Value changed on ${characteristic.uuid}: ${characteristic.value.toHexString()}")
+            }
+
+            onNotificationsEnabled = { _, characteristic ->
+                logOperation("Enabled notifications on ${characteristic.uuid}")
+                notifyingCharacteristics.add(characteristic.uuid)
+            }
+
+            onNotificationsDisabled = { _, characteristic ->
+                logOperation("Disabled notifications on ${characteristic.uuid}")
+                notifyingCharacteristics.remove(characteristic.uuid)
+            }
+        }
+    }
+
     /*******************************************
      * Extension functions
      *******************************************/
@@ -379,6 +524,24 @@ class MainActivity : AppCompatActivity() {
         Timber.i("NavBackStackCount = $backStackEntryCount")
     }
 
+    private fun Activity.hideKeyboard() {
+        hideKeyboard(currentFocus ?: View(this))
+    }
+
+    private fun Context.hideKeyboard(view: View) {
+        val inputMethodManager = getSystemService(Activity.INPUT_METHOD_SERVICE) as InputMethodManager
+        inputMethodManager.hideSoftInputFromWindow(view.windowToken, 0)
+    }
+
+    private fun EditText.showKeyboard() {
+        val inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        requestFocus()
+        inputMethodManager.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun String.hexToBytes() =
+        this.chunked(2).map { it.toUpperCase(Locale.US).toInt(16).toByte() }.toByteArray()
+
     private fun onClickScanButton() {
         if (isScanning) {
             stopBleScan()
@@ -388,21 +551,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onHomeFragmentViewCreated(recyclerView: RecyclerView, scanButton: Button) {
+//        Timber.i("onHomeFragmentViewCreated")
         if (mainViewCreated) {
             homeScanResultRecyclerView = recyclerView
             homeScanButton = scanButton
+
             setupRecyclerViewScanResult()
             scanButton.setOnClickListener { onClickScanButton() }
 
-            ConnectionManager.registerListener(connectionEventListener)
-            if (!bluetoothAdapter.isEnabled) {
-                promptEnableBluetooth()
-            }
+            ConnectionManager.registerListener(connectionEventListenerScan)
         }
 
         if (deviceConnected) {
             deviceConnected = false
+            ConnectionManager.unregisterListener(connectionEventListenerDev)
             ConnectionManager.teardownConnection(gattDevice)
+        }
+
+        if (!bluetoothAdapter.isEnabled) {
+            promptEnableBluetooth()
         }
     }
 
@@ -412,21 +579,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun onDeveloperFragmentViewCreated(recyclerView: RecyclerView, requestMtuButton: Button) {
-        if (mainViewCreated) {
-            devCharacteristicsRecyclerView = recyclerView
-            devMtuButton = requestMtuButton
-            setupRecyclerViewCharacteristics()
-            devMtuButton.setOnClickListener { } //TODO
+    fun onDeveloperFragmentViewCreated(
+        recyclerView: RecyclerView,
+        requestMtuButton: Button,
+        logTextView: TextView,
+        logScrollView: ScrollView
+    ) {
+        devCharacteristicsRecyclerView = recyclerView
+        devMtuButton = requestMtuButton
+        devLogTextView = logTextView
+        devLogScrollView = logScrollView
 
-//            ConnectionManager.registerListener(connectionEventListener)
-            if (!bluetoothAdapter.isEnabled) {
-                promptEnableBluetooth()
+        if (deviceConnected) {
+            setupRecyclerViewCharacteristics()
+
+            devMtuButton.setOnClickListener {
+                if (mtu_field.text.isNotEmpty() && mtu_field.text.isNotBlank()) {
+                    mtu_field.text.toString().toIntOrNull()?.let { mtu ->
+                        logOperation("Requesting for MTU value of $mtu")
+                        ConnectionManager.requestMtu(gattDevice, mtu)
+                    } ?: logOperation("Invalid MTU value: ${mtu_field.text}")
+                } else {
+                    logOperation("Please specify a numeric value for desired ATT MTU (23-517)")
+                }
+                // hideKeyboard() // TODO
             }
+
+            ConnectionManager.registerListener(connectionEventListenerDev)
+        }
+
+        if (!bluetoothAdapter.isEnabled) {
+            promptEnableBluetooth()
         }
     }
 
     fun onDeveloperFragmentDestroyView() {
+//        Timber.i("onDeveloperFragmentDestroyView")
 //        if (deviceConnected) {
 //            ConnectionManager.unregisterListener(connectionEventListenerDev)
 //            characteristicsResults.clear()
