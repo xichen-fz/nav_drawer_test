@@ -9,7 +9,18 @@
         android:id="@+id/nav_home"
         android:name="com.example.nav_drawer_test.ui.home.HomeFragment"
         android:label="@string/menu_home"
-        tools:layout="@layout/fragment_home" />
+        tools:layout="@layout/fragment_home" >
+        <action
+            android:id="@+id/action_nav_home_to_nav_data"
+            app:destination="@id/nav_data"
+            app:popUpTo="@id/nav_home"
+            app:popUpToInclusive="true" />
+        <action
+            android:id="@+id/action_nav_home_to_nav_dev"
+            app:destination="@id/nav_dev"
+            app:popUpTo="@id/nav_home"
+            app:popUpToInclusive="true" />
+    </fragment>
 
     <fragment
         android:id="@+id/nav_data"

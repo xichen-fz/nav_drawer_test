@@ -11,12 +11,14 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.navGraphViewModels
+import androidx.recyclerview.widget.RecyclerView
 import com.example.nav_drawer_test.BuildConfig
-import com.example.nav_drawer_test.FragInterface
 import com.example.nav_drawer_test.MainActivity
 import com.example.nav_drawer_test.R
 import com.example.nav_drawer_test.databinding.FragmentHomeBinding
 import com.example.nav_drawer_test.ui.SharedViewModel
+import kotlinx.android.synthetic.main.fragment_home.*
+import org.jetbrains.anko.support.v4.runOnUiThread
 import timber.log.Timber
 
 
@@ -37,7 +39,6 @@ class HomeFragment : Fragment() {
 
     private lateinit var binding: FragmentHomeBinding
 
-    private var fragInterface: FragInterface? = null
 //    var scanButton: Button? = null
     private val mainActivity get() = activity as MainActivity
 
@@ -62,7 +63,6 @@ class HomeFragment : Fragment() {
 
         Timber.i("binding.root = $root")  // Change upon switching back
         Timber.i("sharedViewModel = $sharedViewModel")    // Change upon switching back
-        Timber.i("fragInterface = $fragInterface")
 
         mainActivity.getNavBackStackEntryCount()
 
@@ -78,22 +78,26 @@ class HomeFragment : Fragment() {
         })
 
         val scanButton: Button = binding.scanButton
-        scanButton.setOnClickListener { v ->
-            sharedViewModel.onClickHomeButton(getString(R.string.text_home))
-            mainActivity.buttonClicked(v)
-        }
+//        scanButton.setOnClickListener {
+////            sharedViewModel.onClickHomeButton(getString(R.string.text_home))
+//            mainActivity.onClickScanButton()
+//        }
+//        Timber.i("scanButton = $scanButton")
 
-        Timber.i("scanButton = $scanButton")
+//        runOnUiThread {
+//            scan_button.text = if (mainActivity.isScanning()) "Stop Scan" else "Start Scan"
+//        }
+
+        val recyclerView: RecyclerView = binding.scanResultsRecyclerView
+//        Timber.i("recyclerView = $recyclerView")
+
+        mainActivity.onHomeFragmentViewCreated(recyclerView, scanButton)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
 //        _binding = null
-    }
-
-    fun setInterface(fInterface: FragInterface) {
-//        this.fragInterface = fInterface
-        this.fragInterface = fInterface
+        mainActivity.onHomeFragmentDestroyView()
     }
 
 }
