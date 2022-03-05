@@ -21,12 +21,12 @@ class SharedViewModel : ViewModel() {
     }
     val text: LiveData<String> = _text
 
-    private val _text_home = MutableLiveData<String>().apply {
-        value = "@NavSharedModel: Home Fragment"
-    }
-    val text_home: LiveData<String> = _text_home
+//    private val _text_home = MutableLiveData<String>().apply {
+//        value = "@NavSharedModel: Home Fragment"
+//    }
+//    val text_home: LiveData<String> = _text_home
 
-    fun onClickHomeButton (string: String) {
-        _text_home.postValue(string)
-    }
+//    fun onClickHomeButton (string: String) {
+//        _text_home.postValue(string)
+//    }
 }

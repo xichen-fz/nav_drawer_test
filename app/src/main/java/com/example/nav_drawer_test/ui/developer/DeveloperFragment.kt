@@ -62,10 +62,10 @@ class DeveloperFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val textView: TextView = binding.textDeveloper
-        sharedViewModel.text.observe(viewLifecycleOwner, Observer {
-            textView.text = it
-        })
+//        val textView: TextView = binding.textDeveloper
+//        sharedViewModel.text.observe(viewLifecycleOwner, Observer {
+//            textView.text = it
+//        })
 
         val requestMtuButton: Button = binding.requestMtuButton
 

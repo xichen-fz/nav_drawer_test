@@ -72,10 +72,10 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val textView: TextView = binding.textHome
-        sharedViewModel.text_home.observe(viewLifecycleOwner, Observer {
-            textView.text = it
-        })
+//        val textView: TextView = binding.textHome
+//        sharedViewModel.text_home.observe(viewLifecycleOwner, Observer {
+//            textView.text = it
+//        })
 
         val scanButton: Button = binding.scanButton
 //        scanButton.setOnClickListener {

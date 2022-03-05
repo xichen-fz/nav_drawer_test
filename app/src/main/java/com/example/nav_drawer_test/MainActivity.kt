@@ -105,6 +105,10 @@ class MainActivity : AppCompatActivity() {
 
     /**************** BLE Device (Connected) Operations ****************/
     private val dateFormatter = SimpleDateFormat("MMM d, HH:mm:ss", Locale.US)
+    private val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
+    private val adcVal1ServiceUuid = UUID.fromString("15005991-b131-3396-014c-664c9867b917")
+
     private val characteristics by lazy {
         ConnectionManager.servicesOnDevice(gattDevice)?.flatMap { service ->
             service.characteristics ?: listOf()
@@ -162,6 +166,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var devCharacteristicsRecyclerView: RecyclerView
     private lateinit var devLogTextView: TextView
     private lateinit var devLogScrollView: ScrollView
+    private lateinit var datalistDataTextView: TextView
+    private lateinit var datalistDataScrollView: ScrollView
 
     /*******************************************
      * Activity function overrides
@@ -362,6 +368,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun appendDatalist(message: String) {
+        val formattedMessage = String.format("%s: %s", timeFormatter.format(Date()), message)
+        runOnUiThread {
+            val currentLogText = if (datalistDataTextView.text.isEmpty()) {
+                "    Time       Data"
+            } else {
+                datalistDataTextView.text
+            }
+            datalistDataTextView.text = "$currentLogText\n$formattedMessage"
+            datalistDataScrollView.post { datalistDataScrollView.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
     private fun showCharacteristicOptions(characteristic: BluetoothGattCharacteristic) {
         characteristicProperties[characteristic]?.let { properties ->
             selector("Select an action to perform", properties.map { it.action }) { _, i ->
@@ -446,6 +465,15 @@ class MainActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).post {
                     navController.navigate(R.id.nav_dev)
                 }
+//                ConnectionManager.enableNotifications(gattDevice, gatt.findCharacteristic(adcVal1ServiceUuid)!!)
+                ConnectionManager.enableNotifications(gattDevice, characteristics.first{it.uuid == adcVal1ServiceUuid})
+//                ConnectionManager.servicesOnDevice(gattDevice)?.forEach { service ->
+//                    service.characteristics?.find { characteristic ->
+//                        characteristic.uuid == adcVal1ServiceUuid
+//                    }.let { matchingCharacteristic ->
+//                        ConnectionManager.enableNotifications(gattDevice, matchingCharacteristic!!)
+//                    }
+//                }
 
                 deviceConnected = true
 
@@ -502,6 +530,26 @@ class MainActivity : AppCompatActivity() {
                 logOperation("Disabled notifications on ${characteristic.uuid}")
                 notifyingCharacteristics.remove(characteristic.uuid)
             }
+        }
+    }
+
+    private val connectionEventListenerDatalist by lazy {
+        ConnectionEventListener().apply {
+            onDisconnect = {}
+
+            onCharacteristicRead = { _, _ -> }
+
+            onCharacteristicWrite = { _, _ -> }
+
+            onMtuChanged = { _, _ -> }
+
+            onCharacteristicChanged = { _, characteristic ->
+                appendDatalist(characteristic.value.toHexString())
+            }
+
+            onNotificationsEnabled = { _, _ -> }
+
+            onNotificationsDisabled = { _, _ -> }
         }
     }
 
@@ -565,6 +613,7 @@ class MainActivity : AppCompatActivity() {
         if (deviceConnected) {
             deviceConnected = false
             ConnectionManager.unregisterListener(connectionEventListenerDev)
+            ConnectionManager.unregisterListener(connectionEventListenerDatalist)
             ConnectionManager.teardownConnection(gattDevice)
         }
 
@@ -619,6 +668,31 @@ class MainActivity : AppCompatActivity() {
 //            ConnectionManager.unregisterListener(connectionEventListenerDev)
 //            characteristicsResults.clear()
 //            characteristicAdapter.notifyDataSetChanged()
+//        }
+    }
+
+    fun onDatalistFragmentViewCreated(
+        dataTextView: TextView,
+        dataScrollView: ScrollView
+    ) {
+        datalistDataTextView = dataTextView
+        datalistDataScrollView = dataScrollView
+
+        if (deviceConnected) {
+//            setupRecyclerViewData()
+
+            ConnectionManager.registerListener(connectionEventListenerDatalist)
+        }
+
+        if (!bluetoothAdapter.isEnabled) {
+            promptEnableBluetooth()
+        }
+    }
+
+    fun onDatalistFragmentDestroyView() {
+//        Timber.i("onDatalistFragmentDestroyView")
+//        if (deviceConnected) {
+//            ConnectionManager.unregisterListener(connectionEventListenerDatalist)
 //        }
     }
 
